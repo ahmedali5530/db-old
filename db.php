@@ -8,8 +8,16 @@
 *------*ahmedali5530*------
 *------ version 2.0--------
 **/
-
-Class DB extends Loader{
+//used for database tables prefix
+define('DB_PREFIX','',false);
+//used for error reporting
+define('ENVIRONMENT','production',false);
+//defines the database settings
+define('DB_HOST','localhost',false);
+define('DB_NAME','',false);
+define('DB_USER','root',false);
+define('DB_PASSWORD','',false);
+Class DB{
 	
 	var $where = array();
 	var $select = array();
@@ -18,12 +26,12 @@ Class DB extends Loader{
 	var $joins = array();
 	var $like = array();
 	var $offset = false;
-	var	$limit = null;
-	var	$order_by = false;
-	var	$order_by_mode = false;
-	var	$group_by = array();
-	var	$having = false;
-	var	$cycles = false;
+	var $limit = null;
+	var $order_by = false;
+	var $order_by_mode = false;
+	var $group_by = array();
+	var $having = false;
+	var $cycles = false;
 	var $num_rows = '';
 	var $insert_id = '';
 	var $result = array();
@@ -40,7 +48,7 @@ Class DB extends Loader{
 	public function __construct($host=null,$user=null,$pw=null,$db=null)
 	{
 		if($host==null && $user==null && $pw==null && $db==null){
-			$this->con = new Mysqli(self::DB_HOST,self::DB_USER,self::DB_PASSWORD,self::DB_NAME);
+			$this->con = new Mysqli(DB_HOST,DB_USER,DB_PASSWORD,DB_NAME);
 		}else{
 			$this->con = new Mysqli($host,$user,$pw,$db);
 		}
@@ -49,12 +57,6 @@ Class DB extends Loader{
 		}
 		$this->con->set_charset('utf8');
 		
-		self::$instance = $this;
-	}
-	
-	public static function get_instance()
-	{
-		return self::$instance;
 	}
 	
 
@@ -256,11 +258,11 @@ Class DB extends Loader{
 	{
 		if(isset($this->table) && count($this->table)>0)
 		{
-			$this->table[] = ", `".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
+			$this->table[] = ", `".$this->clean($this->check_alias(DB_PREFIX.$table_name))."`";
 		}
 		else
 		{
-			$this->table[] = "`".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
+			$this->table[] = "`".$this->clean($this->check_alias(DB_PREFIX.$table_name))."`";
 		}
 		return $this;
 	}
@@ -270,11 +272,11 @@ Class DB extends Loader{
 	{
 		if(isset($this->table) && count($this->table)>0)
 		{
-			$this->table[] = ", `".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
+			$this->table[] = ", `".$this->clean($this->check_alias(DB_PREFIX.$table_name))."`";
 		}
 		else
 		{
-			$this->table[] = "`".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
+			$this->table[] = "`".$this->clean($this->check_alias(DB_PREFIX.$table_name))."`";
 		}
 		return $this;
 	}
@@ -321,7 +323,7 @@ Class DB extends Loader{
 	//join('t1 as ab','ab.school_id=t2.school_id','JOIN TYPE')
 	public function join($table_name,$condition,$join_type='INNER')
 	{
-		$this->joins[] = $join_type.' JOIN `'.$this->check_alias(parent::DB_PREFIX.$table_name).'` ON `'.parent::DB_PREFIX.str_replace('=','`=`'.parent::DB_PREFIX.'',str_replace('.','`.`',$condition)).'` ';
+		$this->joins[] = $join_type.' JOIN `'.$this->check_alias(DB_PREFIX.$table_name).'` ON `'.DB_PREFIX.str_replace('=','`=`'.DB_PREFIX.'',str_replace('.','`.`',$condition)).'` ';
 		return $this;
 	}
 	
@@ -1059,7 +1061,7 @@ Class DB extends Loader{
 	{
 		if(strpos($key,'.'))
 		{
-			$key = str_replace('.','`.`',parent::DB_PREFIX.$key);
+			$key = str_replace('.','`.`',DB_PREFIX.$key);
 		}
 		
 		if(strpos($key,'as'))
