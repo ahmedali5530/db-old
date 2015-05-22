@@ -81,7 +81,7 @@ Class DB{
 		$this->raw = false;
 	}
 	
-	//function can be DISTINCT, MIN, MAX, SUM, COUNT
+	//function can be DISTINCT, MIN, MAX, SUM, COUNT, AVERAGE
 	public function select_aggregate($function='DISTINCT',$field='*',$alias=null)
 	{
 		$stmt = $function.'(`'.$this->check_alias($field).'`)';
