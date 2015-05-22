@@ -291,8 +291,9 @@ Class DB{
 	
 	//sets the order by clause
 	//added support for getting random values from database, dedicated to Fatima Zaheer, because this was added on her request. use only rand in field
-	//Thanks to Fatima Zaheer Khan.
+	//Thanks to Fatima Zaheer Khan for reporting this change.
 	//changing from escape to original
+
 	public function order_by($order_by_field,$order_by_mode='ASC')
 	{
 		if($order_by_field == 'RAND' || $order_by_field == 'rand')
