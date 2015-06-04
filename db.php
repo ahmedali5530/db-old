@@ -7,7 +7,12 @@
 *-----@author------
 *------*ahmedali5530*------
 *------ version 2.0--------
+
+CHANGELOG
+1. Rewrite the code with mysqli prepared statements to prevent from sql injection attacks.
+2. Removed Support for comparing fields in where statements, use DB::query() method for raw query to execute custom sql statements.
 **/
+
 //used for error reporting, Default is production, can be development.
 define('ENVIRONMENT','production',false);
 //defines the database settings
@@ -15,12 +20,15 @@ define('DB_HOST','localhost',false);
 define('DB_NAME','',false);
 define('DB_USER','root',false);
 define('DB_PASSWORD','',false);
-
 //used for database tables prefix
 define('DB_PREFIX','',false);
+
 Class DB{
 	
 	var $where = array();
+	var $where_values = array();
+	var $where_fields = array();
+	var $where_type_list = array();
 	var $select = array();
 	var $aggregate = array();
 	var $table = array();
@@ -36,6 +44,7 @@ Class DB{
 	var $num_rows = '';
 	var $insert_id = '';
 	var $result = array();
+	var $stmt = array();
 	var $get_array = array();
 	var $get_object = array();
 	var $query = '';
@@ -57,14 +66,15 @@ Class DB{
 			die("Failed to connect to Server: (" . $this->con->connect_errno . ") " . $this->con->connect_error);
 		}
 		$this->con->set_charset('utf8');
-		
 	}
-	
 
 	//resets the selection/write variables
 	public function reset()
 	{
 		$this->where = array();
+		$this->where_values = array();
+		$this->where_fields = array();
+		$this->where_type_list = array();
 		$this->select = array();
 		$this->aggregate = array();
 		$this->table = array();
@@ -132,11 +142,19 @@ Class DB{
 			{
 				if(isset($this->where) && count($this->where)>0)
 				{
-					$this->where[] = "".$type." `".$this->clean($this->check_alias($key))."`".$operator.$val_quotes.$this->clean($val).$val_quotes." ";
+					//$this->where[] = "".$type." `".$this->clean($this->check_alias($key))."`".$operator.$val_quotes.$this->clean($val).$val_quotes." ";
+					$this->where[] = "".$type." `".$this->clean($this->check_alias($key))."` ".$operator." ? ";
+					$this->where_type_list[] = $this->determine_type($val);
+					$this->where_fields[] = "`".$this->clean($this->check_alias($key))."`";
+					$this->where_values[] = $this->clean($val);
 				}
 				else
 				{
-					$this->where[] = "`".$this->clean($this->check_alias($key))."`".$operator.$val_quotes.$this->clean($val).$val_quotes." ";
+					//$this->where[] = "`".$this->clean($this->check_alias($key))."`".$operator.$val_quotes.$this->clean($val).$val_quotes." ";
+					$this->where[] = "`".$this->clean($this->check_alias($key))."` ".$operator." ? ";
+					$this->where_type_list[] = $this->determine_type($val);
+					$this->where_fields[] = "`".$this->clean($this->check_alias($key))."`";
+					$this->where_values[] = $this->clean($val);
 				}
 			}
 		}
@@ -144,18 +162,26 @@ Class DB{
 		{
 			if(isset($this->where) && count($this->where)>0)
 			{
-				$this->where[] = "".$type." `".$this->clean($this->check_alias($properties))."`".$operator.$val_quotes.$this->clean($values).$val_quotes." ";
+				//$this->where[] = "".$type." `".$this->clean($this->check_alias($properties))."`".$operator.$val_quotes.$this->clean($values).$val_quotes." ";
+				$this->where[] = "".$type." `".$this->clean($this->check_alias($properties))."` ".$operator." ? ";
+				$this->where_type_list[] = $this->determine_type($values);
+				$this->where_fields[] = "`".$this->clean($this->check_alias($properties))."`";
+				$this->where_values[] = $this->clean($values);
 			}
 			else
 			{
-				$this->where[] = "`".$this->clean($this->check_alias($properties))."`".$operator.$val_quotes.$this->clean($values).$val_quotes." ";
+				//$this->where[] = "`".$this->clean($this->check_alias($properties))."`".$operator.$val_quotes.$this->clean($values).$val_quotes." ";
+				$this->where[] = "`".$this->clean($this->check_alias($properties))."` ".$operator." ? ";
+				$this->where_type_list[] = $this->determine_type($values);
+				$this->where_fields[] = "`".$this->clean($this->check_alias($properties))."`";
+				$this->where_values[] = $this->clean($values);
 			}
 		}
 		return $this;
 	}
 	
-	//adds the where IN operator, added support for WHERE `field` NOT IN(1,2,3,4,...)
-	public function where_in($field, $values,$mode = '')
+	//adds the where IN operator
+	public function where_in($field, $values)
 	{
 		if(is_array($values))
 		{
@@ -164,11 +190,11 @@ Class DB{
 			
 			if(isset($this->where) && count($this->where)>0)
 			{
-				$this->where[] = " AND `" . $this->clean($this->check_alias($field)) ."` ".$mode." IN('".$values."')";
+				$this->where[] = " AND `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
 			}
 			else
 			{
-				$this->where[] = " `" . $this->clean($this->check_alias($field)) ."` ".$mode." IN('".$values."')";
+				$this->where[] = " `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
 			}
 		}
 		else
@@ -182,7 +208,6 @@ Class DB{
 				$this->where[] = " `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
 			}
 		}
-		return $this;
 	}
 	
 	//made the support for BETWEEN comparisons
@@ -190,68 +215,50 @@ Class DB{
 	{
 		if(isset($this->where) && count($this->where)>0)
 		{
-			$this->where[] = "".$type." `".$this->clean($this->check_alias($field))."` BETWEEN '".$this->clean($first_val)."' AND '".$this->clean($second_val)."' ";
+			//$this->where[] = "".$type." `".$this->clean($this->check_alias($field))."` BETWEEN '".$this->clean($first_val)."' AND '".$this->clean($second_val)."' ";
+			$this->where[] = "".$type." `".$this->clean($this->check_alias($field))."` BETWEEN ? AND ? ";
+			//first values
+			$this->where_type_list[] = $this->determine_type($first_val);
+			$this->where_fields[] = "`".$this->clean($this->check_alias($field))."`";
+			$this->where_values[] = $this->clean($first_val);
+			//second value
+			$this->where_type_list[] = $this->determine_type($second_val);
+			$this->where_fields[] = "`".$this->clean($this->check_alias($field))."`";
+			$this->where_values[] = $this->clean($second_val);
 		}
 		else
 		{
-			$this->where[] = " `".$this->clean($this->check_alias($field))."` BETWEEN '".$this->clean($first_val)."' AND '".$this->clean($second_val)."' ";
+			//$this->where[] = " `".$this->clean($this->check_alias($field))."` BETWEEN '".$this->clean($first_val)."' AND '".$this->clean($second_val)."' ";
+			$this->where[] = " `".$this->clean($this->check_alias($field))."` BETWEEN ? AND ? ";
+			//first values
+			$this->where_type_list[] = $this->determine_type($first_val);
+			$this->where_fields[] = "`".$this->clean($this->check_alias($field))."`";
+			$this->where_values[] = $this->clean($first_val);
+			//second value
+			$this->where_type_list[] = $this->determine_type($second_val);
+			$this->where_fields[] = "`".$this->clean($this->check_alias($field))."`";
+			$this->where_values[] = $this->clean($second_val);
 		}
 		return $this;
 	}
 	
 	//make the query string for like operator
 	//supported position are before(%a), after(a%), both(%a%) and none(a)
-	public function like($properties , $values = null,$position='both',$type='AND',$not = '')
+	public function like($properties , $values = null,$position='both',$type='AND')
 	{
 		$this->like = array();
 		if(is_array($properties))
 		{
 			foreach($properties as $key=>$val)
 			{
-				$this->like[] = $this->prepare_like_positions($key,$val,$position,$type,$not);
+				$this->like[] = $this->prepare_like_positions($key,$val,$position,$type);
 			}
 		}
 		else
 		{
-			$this->like[] = $this->prepare_like_positions($properties,$values,$position,$type,$not);
+			$this->like[] = $this->prepare_like_positions($properties,$values,$position,$type);
 		}
 		return $this;
-	}
-	
-	private function prepare_like_positions($key,$val,$position='both',$type='AND',$not)
-	{
-		if(isset($this->like) && count($this->like)>0)
-		{
-			if($position=='both')
-			{
-				return $type." `".$this->clean($this->check_alias($key))."` ".$not." LIKE '%".$this->clean($val)."%' ";
-			}elseif($position=='before')
-			{
-				return $type." `".$this->clean($this->check_alias($key))."` ".$not." LIKE '%".$this->clean($val)."' ";
-			}elseif($position=='after')
-			{
-				return $type." `".$this->clean($this->check_alias($key))."` ".$not." LIKE '".$this->clean($val)."%' ";
-			}else
-			{
-				return $type." `".$this->clean($this->check_alias($key))."` ".$not." LIKE '".$this->clean($val)."' ";
-			}
-		}
-		else
-		{
-			if($position=='both')
-			{
-				return "`".$this->clean($this->check_alias($key))."` ".$not." LIKE '%".$this->clean($val)."%' ";
-			}elseif($position=='before')
-			{
-				return "`".$this->clean($this->check_alias($key))."` ".$not." LIKE '%".$this->clean($val)."' ";
-			}elseif($position=='after')
-			{
-				return "`".$this->clean($this->check_alias($key))."` ".$not." LIKE '".$this->clean($val)."%' ";
-			}else
-			{
-				return "`".$this->clean($this->check_alias($key))."` ".$not." LIKE '".$this->clean($val)."' ";
-			}
-		}
 	}
 
 	//prepares the table name
@@ -291,24 +298,19 @@ Class DB{
 	}
 	
 	//sets the order by clause
-	//added support for getting random values from database, dedicated to Fatima Zaheer, because this was added on her request. use only rand in field
-	//Thanks to Fatima Zaheer Khan for reporting this change.
-	//changing from escape to original
-
-	public function order_by($order_by_field,$order_by_mode='ASC')
+	//added support for getting random values from database, dedicated to Fatima Zaheer, because this was added on her request. use escape as true.
+	public function order_by($order_by_field,$order_by_mode='ASC',$escape = false)
 	{
-		if($order_by_field == 'RAND' || $order_by_field == 'rand')
+		if($escape == false)
 		{
-			$this->order_by = " ORDER BY RAND() " . $order_by_mode;
-			return $this;
+			$this->order_by = " ORDER BY `".$this->check_alias($order_by_field) . "` " . $order_by_mode;
 		}
 			else
 		{
-			$this->order_by = " ORDER BY `".$this->check_alias($order_by_field) . "` ". $order_by_mode;
-			return $this;
+			$this->order_by = " ORDER BY ".$this->check_alias($order_by_field) . " ". $order_by_mode;
 		}
 		
-		
+		return $this;
 	}
 	
 	//sets the group by class
@@ -410,7 +412,15 @@ Class DB{
 			{
 				$this->query .= " WHERE ";
 				
+				//uncomment the following line
 				$this->query .= implode("\n",$this->where);
+				
+				//remove this line
+				/* foreach($this->where_fields as $field){
+					$this->query .= $field ." = ? AND";
+				}
+				
+				$this->query = rtrim($this->query,"AND"); */
 			}
 			
 			//check for like properties
@@ -456,31 +466,57 @@ Class DB{
 			{
 				$this->query .= ",".$this->limit;
 			}
-		}
-		//main query has been overwritten
-		//echo $this->query;
-		//transfers the result to the result property
-		$this->result = $this->con->query($this->query);
+			
+			$this->stmt = $this->con->prepare($this->query);
+			
+			if($this->stmt->errno !== 0)
+			{
+				return $this->debug();
+			}
 		
-		//sets the num_rows
-		$this->num_rows = $this->result->num_rows;
+			//bind the parameters to the query
+			if(!empty($this->where_type_list)){
+				$this->bind_param_array(implode('',$this->where_type_list),$this->where_values);
+			}
+			$this->stmt->execute();
+			
+			$this->num_rows = $this->stmt->affected_rows;
+			
+			$this->result = $this->stmt->get_result();
+		}else{
 		
-		//some debugging
-		if($this->con->errno)
-		{
-			return $this->debug();
+			//execute the query in native mysqli style, non prepared style
+			//main query has been overwritten
+			//echo $this->query;
+			//transfers the result to the result property
+			$this->result = $this->con->query($this->query);
+			
+			//some debugging
+			if($this->con->errno !== 0)
+			{
+				return $this->debug();
+			}
+		
+			//sets the num_rows
+			$this->num_rows = $this->con->affected_rows;
 		}
+		
 		//return the result set
 		
+		//uncomment the following line
 		$this->reset();
 		
-		return $this->result;
+		//uncomment the following line
+		//return $this->result;
+		
+		//remove the following line if failed, test passed successfully!
+		return $this;
 	}
 
 	//returns the num rows returned by the last select query.
 	public function num_rows()
 	{
-		return $this->num_rows;
+		return $this->con->affected_rows;
 	}
 
 	//returns the affected rows from a insert, update or delete query
@@ -499,8 +535,10 @@ Class DB{
 	public function get_array()
 	{
 		$this->get();
+		
+		//$this->reset();
 	
-		if($this->num_rows()>0)
+		if($this->con->affected_rows > 0)
 		{
 			while($fetch_array = $this->result->fetch_assoc())
 			{
@@ -524,8 +562,12 @@ Class DB{
 	public function get_object()
 	{
 		$this->get();
+		
+		//$this->reset();
+		
+		//print_r($this->result->fetch_object());
 
-		if($this->num_rows()>0)
+		if($this->con->affected_rows > 0)
 		{
 			while($fetch_object = $this->result->fetch_object())
 			{
@@ -534,11 +576,13 @@ Class DB{
 		}
 		else
 		{
-			$this->get_object = null;	
+			$this->get_object = null;
 		}
 		
 		//frees the memory
 		$this->result->free();
+		
+		//$this->reset();
 		
 		return $this->get_object;
 	}
@@ -554,11 +598,9 @@ Class DB{
 	{
 		$this->get();
 		
-		$result = $this->result;
-		
-		if($this->num_rows()>0)
+		if($this->con->affected_rows > 0)
 		{
-			while($fetch_assoc = $result->fetch_assoc())
+			while($fetch_assoc = $this->result->fetch_assoc())
 			{
 				$this->get_array[] = $fetch_assoc;
 			}
@@ -588,11 +630,9 @@ Class DB{
 	{
 		$this->get();
 		
-		$result = $this->result;
-		
-		if($this->num_rows()>0)
+		if($this->con->affected_rows > 0)
 		{
-			while($fetch_object = $result->fetch_object())
+			while($fetch_object = $this->result->fetch_object())
 			{
 				$this->get_object[] = $fetch_object;
 			}
@@ -1058,7 +1098,8 @@ Class DB{
 	}
 	
 	//check whether there is a dot in the fields or not
-	//dot(.) relates to table.field 
+	//dot(.) relates to table.field
+	//check for if there is an alias of field or not
 	private function check_alias($key)
 	{
 		if(strpos($key,'.'))
@@ -1079,6 +1120,75 @@ Class DB{
 	{
 		$data = filter_var($data, FILTER_SANITIZE_STRING);
 		return $this->con->real_escape_string(trim($data));
+	}
+	
+	private function determine_type($val)
+	{
+		switch(gettype($val))
+		{
+			case('string');
+			return 's';
+			break;
+			
+			case('integer');
+			return 'i';
+			break;
+			
+			case('double');
+			return 'd';
+			break;
+			
+			case('blob');
+			return 'b';
+			break;
+		}
+	}
+	
+	private function prepare_like_positions($key,$val,$position='both',$type='AND')
+	{
+		if(isset($this->like) && count($this->like)>0)
+		{
+			if($position=='both')
+			{
+				return $type." `".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."%' ";
+			}elseif($position=='before')
+			{
+				return $type." `".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."' ";
+			}elseif($position=='after')
+			{
+				return $type." `".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."%' ";
+			}else
+			{
+				return $type." `".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."' ";
+			}
+		}
+		else
+		{
+			if($position=='both')
+			{
+				return "`".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."%' ";
+			}elseif($position=='before')
+			{
+				return "`".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."' ";
+			}elseif($position=='after')
+			{
+				return "`".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."%' ";
+			}else
+			{
+				return "`".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."' ";
+			}
+		}
+	}
+	
+	private function bind_param_array($types,$vars){
+		$php_command = '$this->stmt->bind_param($types';
+		for( $i=0;$i<count($vars);$i++)
+		{
+			$php_command .= ',$vars['.$i.']';
+		}
+		$php_command .= ');';
+		
+		return eval($php_command);
 	}
 	
 	//debug
@@ -1107,6 +1217,9 @@ Class DB{
 	//magic __destruct()
 	public function __destruct()
 	{
+		if($this->stmt){
+			$this->stmt->close();
+		}
 		$this->con->close();
 	}
 }
