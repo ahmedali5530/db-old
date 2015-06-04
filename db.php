@@ -8,15 +8,16 @@
 *------*ahmedali5530*------
 *------ version 2.0--------
 **/
-//used for database tables prefix
-define('DB_PREFIX','',false);
-//used for error reporting
+//used for error reporting, Default is production, can be development.
 define('ENVIRONMENT','production',false);
 //defines the database settings
 define('DB_HOST','localhost',false);
 define('DB_NAME','',false);
 define('DB_USER','root',false);
 define('DB_PASSWORD','',false);
+
+//used for database tables prefix
+define('DB_PREFIX','',false);
 Class DB{
 	
 	var $where = array();
