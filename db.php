@@ -9,9 +9,9 @@
 *------ version 2.0--------
 
 /**
- * CHANGELOG
-1. Rewrite the code with mysqli prepared statements to prevent from sql injection attacks.
-2. Removed Support for comparing fields in where statements, use DB::query() method for raw query to execute custom sql statements.
+* CHANGELOG
+* 1. Rewrite the code with mysqli prepared statements to prevent from sql injection attacks.
+* 2. Removed Support for comparing fields in where statements, use DB::query() method for raw query to execute custom sql statements.
 **/
 
 //used for error reporting, Default is production, can be development.
